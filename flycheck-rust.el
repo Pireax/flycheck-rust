@@ -35,10 +35,6 @@
 ;; # Usage
 ;;
 ;; Just use Flycheck as usual in your Rust/Cargo projects.
-;;
-;; Note: You must run `cargo build` initially to install all dependencies.  If
-;; you add new dependencies to `Cargo.toml` you need to run `cargo build`
-;; again. Otherwise you will see spurious errors about missing crates.
 
 ;;; Code:
 
@@ -46,55 +42,6 @@
 (require 'flycheck)
 (require 'seq)
 (require 'json)
-
-(defun flycheck-rust-executable-p (rel-name)
-  "Whether REL-NAME denotes an executable.
-
-REL-NAME is the file relative to the Cargo.toml file."
-  (or (string= "src/main.rs" rel-name)
-      (string-prefix-p "src/bin/" rel-name)))
-
-(defun flycheck-rust-test-p (rel-name)
-  "Whether REL-NAME denotes a test.
-
-REL-NAME is the file relative to the Cargo.toml file."
-  (string-prefix-p "tests/" rel-name))
-
-(defun flycheck-rust-bench-p (rel-name)
-  "Whether REL-NAME denotes a bench.
-
-REL-NAME is the file relative to the Cargo.toml file."
-  (string-prefix-p "benches/" rel-name))
-
-(defun flycheck-rust-example-p (rel-name)
-  "Whether REL-NAME denotes an example.
-
-REL-NAME is the file relative to the Cargo.toml file."
-  (string-prefix-p "examples/" rel-name))
-
-(defun flycheck-rust-project-root ()
-  "Get the project root for the current buffer.
-
-Return the directory containing the Cargo file, or nil if there
-is none."
-  (locate-dominating-file (buffer-file-name) "Cargo.toml"))
-
-(defun flycheck-rust-find-crate-root ()
-  "Get the crate root (the nearest lib.rs or main.rs)
-relative to the current file."
-  (-if-let (lib-crate-dir (locate-dominating-file (buffer-file-name) "lib.rs"))
-      (expand-file-name "lib.rs" lib-crate-dir)
-    (-when-let (exe-crate-dir (locate-dominating-file (buffer-file-name) "main.rs"))
-      (expand-file-name "main.rs" exe-crate-dir))))
-
-(defun flycheck-rust-binary-crate-p (project-root)
-  "Determine whether PROJECT-ROOT is a binary crate.
-
-PROJECT-ROOT is the path to the root directory of the project.
-
-Return non-nil if PROJECT-ROOT is a binary crate, nil otherwise."
-  (let ((root-dir (file-name-directory project-root)))
-    (file-exists-p (expand-file-name "src/main.rs" root-dir))))
 
 (defun flycheck-rust-find-target (file-name)
   "Find and return the cargo target associated with the given file.
@@ -129,46 +76,21 @@ name)."
 If the current file is part of a Cargo project, configure
 Flycheck according to the Cargo project layout."
   (interactive)
-  (when (buffer-file-name)
-    (-when-let (root (flycheck-rust-project-root))
-      ;; We should avoid raising any error in this function, as in combination
-      ;; with `global-flycheck-mode' it will render Emacs unusable (see
-      ;; https://github.com/flycheck/flycheck-rust/issues/40#issuecomment-253760883).
-      (if (not (funcall flycheck-executable-find "cargo"))
-          ;; We can still inform the user though
-          (message "flycheck-rust cannot find `cargo'.  Please \
+  (-when-let (filename (buffer-file-name))
+    ;; We should avoid raising any error in this function, as in combination
+    ;; with `global-flycheck-mode' it will render Emacs unusable (see
+    ;; https://github.com/flycheck/flycheck-rust/issues/40#issuecomment-253760883).
+    (if (not (funcall flycheck-executable-find "cargo"))
+        ;; We can still inform the user though
+        (message "flycheck-rust cannot find `cargo'.  Please \
 make sure that cargo is installed and on your PATH.  See \
 http://www.flycheck.org/en/latest/user/troubleshooting.html for \
 more information on setting your PATH with Emacs.")
-        (pcase-let ((rel-name (file-relative-name (buffer-file-name) root))
-                    (`(,target-type . ,target-name) (flycheck-rust-find-target
-                                                     (buffer-file-name))))
-          ;; These are valid crate roots as by Cargo's layout
-          (if (or (flycheck-rust-executable-p rel-name)
-                  (flycheck-rust-test-p rel-name)
-                  (flycheck-rust-bench-p rel-name)
-                  (flycheck-rust-example-p rel-name)
-                  (string= "src/lib.rs" rel-name))
-              (setq-local flycheck-rust-crate-root rel-name)
-            ;; For other files, the library is either the default library or the
-            ;; executable
-            (setq-local flycheck-rust-crate-root (flycheck-rust-find-crate-root)))
-          ;; Check tests in libraries and integration tests
-          (setq-local flycheck-rust-check-tests
-                      (not (flycheck-rust-executable-p rel-name)))
-          ;; Set the crate type
-          (setq-local flycheck-rust-crate-type
-                      (if (string= target-type "bin")
-                          (progn
-                            ;; If it's binary target, we need to pass the binary
-                            ;; name
-                            (setq-local flycheck-rust-binary-name target-name)
-                            "bin")
-                        "lib"))
-          ;; Find build libraries
-          (setq-local flycheck-rust-library-path
-                      (list (expand-file-name "target/debug" root)
-                            (expand-file-name "target/debug/deps" root))))))))
+
+      (pcase-let ((`(,target-type . ,target-name)
+                   (flycheck-rust-find-target filename)))
+        (setq-local flycheck-rust-target-kind target-type)
+        (setq-local flycheck-rust-target-name target-name)))))
 
 (provide 'flycheck-rust)
 
