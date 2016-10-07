@@ -57,6 +57,24 @@ manifest could not be located."
   (-when-let (root-dir (locate-dominating-file file-name "Cargo.toml"))
     (expand-file-name "Cargo.toml" root-dir)))
 
+(defun flycheck-rust-dirs-to-root (start end)
+  "Return a list of directories from START (inclusive) and END (exclusive).
+
+E.g., if START is '/a/b/c/d' and END is '/a', return the list
+'(/a/b/c/d /a/b/c /a/b) in this order.
+
+START and END are strings representing file paths.  END should be
+above START in the file hierarchy; if not, the list stops at the
+root of the file hierarchy."
+  (let ((dirlist)
+        (dir (expand-file-name start))
+        (end (expand-file-name end)))
+    (while (not (or (equal dir (car dirlist)) ; avoid infinite loop
+                    (file-equal-p dir end)))
+      (push dir dirlist)
+      (setq dir (directory-file-name (file-name-directory dir))))
+    (nreverse dirlist)))
+
 (defun flycheck-rust-find-target (file-name)
   "Return the cargo build target associated with the given file.
 
@@ -107,24 +125,6 @@ description of the conventional cargo project layout."
       ;; Return the cons cell
       ;; (print target)
       (let-alist target (cons (car .kind) .name)))))
-
-(defun flycheck-rust-dirs-to-root (start end)
-  "Return a list of directories from START (inclusive) and END (exclusive).
-
-E.g., if START is '/a/b/c/d' and END is '/a', return the list
-'(/a/b/c/d /a/b/c /a/b) in this order.
-
-START and END are strings representing file paths.  END should be
-above START in the file hierarchy; if not, the list stops at the
-root of the file hierarchy."
-  (let ((dirlist)
-        (dir (expand-file-name start))
-        (end (expand-file-name end)))
-    (while (not (or (equal dir (car dirlist)) ; avoid infinite loop
-                    (file-equal-p dir end)))
-      (push dir dirlist)
-      (setq dir (directory-file-name (file-name-directory dir))))
-    (nreverse dirlist)))
 
 ;;;###autoload
 (defun flycheck-rust-setup ()
