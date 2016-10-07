@@ -57,7 +57,7 @@ manifest could not be located."
   (-when-let (root-dir (locate-dominating-file file-name "Cargo.toml"))
     (expand-file-name "Cargo.toml" root-dir)))
 
-(defun flycheck-rust-dirs-to-root (start end)
+(defun flycheck-rust-dirs-list (start end)
   "Return a list of directories from START (inclusive) and END (exclusive).
 
 E.g., if START is '/a/b/c/d' and END is '/a', return the list
@@ -118,8 +118,8 @@ description of the conventional cargo project layout."
                   ;; build a list of (target . dir) candidates
                   (-table-flat
                    'cons targets
-                   (flycheck-rust-dirs-to-root file-name
-                                               (file-name-directory manifest)))))
+                   (flycheck-rust-dirs-list file-name
+                                            (file-name-directory manifest)))))
             ;; If all else fails, just pick the first target
             (car targets))))
       ;; Return the cons cell
