@@ -1,4 +1,4 @@
-;;; test-error-list.el --- Flycheck Specs: Error List  -*- lexical-binding: t; -*-
+;;; test-rust-setup.el -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2016 fmdkdd
 
