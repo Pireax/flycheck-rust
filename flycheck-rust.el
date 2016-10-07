@@ -145,8 +145,8 @@ more information on setting your PATH with Emacs.")
 
     (-when-let* ((file-name (buffer-file-name))
                  ((kind . name) (flycheck-rust-find-target file-name)))
-      (setq-local flycheck-rust-target-kind kind)
-      (setq-local flycheck-rust-target-name name))))
+      (setq-local flycheck-rust-crate-type kind)
+      (setq-local flycheck-rust-binary-name name))))
 
 (provide 'flycheck-rust)
 
