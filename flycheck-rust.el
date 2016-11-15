@@ -6,7 +6,7 @@
 ;; URL: https://github.com/flycheck/flycheck-rust
 ;; Keywords: tools, convenience
 ;; Version: 0.1-cvs
-;; Package-Requires: ((emacs "24.1") (flycheck "0.20") (dash "2.13.0") (seq "2.15"))
+;; Package-Requires: ((emacs "24.1") (flycheck "0.20") (dash "2.13.0") (seq "2.15") (async "1.9"))
 
 ;; This file is not part of GNU Emacs.
 
@@ -46,6 +46,7 @@
 (require 'flycheck)
 (require 'seq)
 (require 'json)
+(require 'async)
 
 (defun flycheck-rust-executable-p (rel-name)
   "Whether REL-NAME denotes an executable.
@@ -126,7 +127,37 @@ more information on setting your PATH with Emacs."))
                          (-let [(&alist 'src_path src_path) target]
                            (string= file-name src_path)))
                        targets (car targets))]
-          (cons kind name)))))
+        (cons kind name)))))
+
+(defun flycheck-rust-setup-callback (buf-file-name root result)
+  (pcase-let ((rel-name (file-relative-name buf-file-name root))
+              (`(,target-type . ,target-name) result))
+    ;; These are valid crate roots as by Cargo's layout
+    (if (or (flycheck-rust-executable-p rel-name)
+            (flycheck-rust-test-p rel-name)
+            (flycheck-rust-bench-p rel-name)
+            (flycheck-rust-example-p rel-name)
+            (string= "src/lib.rs" rel-name))
+        (setq-local flycheck-rust-crate-root rel-name)
+      ;; For other files, the library is either the default library or the
+      ;; executable
+      (setq-local flycheck-rust-crate-root (flycheck-rust-find-crate-root)))
+    ;; Check tests in libraries and integration tests
+    (setq-local flycheck-rust-check-tests
+                (not (flycheck-rust-executable-p rel-name)))
+    ;; Set the crate type
+    (setq-local flycheck-rust-crate-type
+                (if (string= target-type "bin")
+                    (progn
+                      ;; If it's binary target, we need to pass the binary
+                      ;; name
+                      (setq-local flycheck-rust-binary-name target-name)
+                      "bin")
+                  "lib"))
+    ;; Find build libraries
+    (setq-local flycheck-rust-library-path
+                (list (expand-file-name "target/debug" root)
+                      (expand-file-name "target/debug/deps" root)))))
 
 ;;;###autoload
 (defun flycheck-rust-setup ()
@@ -141,35 +172,14 @@ Flycheck according to the Cargo project layout."
   (with-demoted-errors "Error in flycheck-rust-setup: %S"
     (when (buffer-file-name)
       (-when-let (root (flycheck-rust-project-root))
-        (pcase-let ((rel-name (file-relative-name (buffer-file-name) root))
-                    (`(,target-type . ,target-name) (flycheck-rust-find-target
-                                                     (buffer-file-name))))
-          ;; These are valid crate roots as by Cargo's layout
-          (if (or (flycheck-rust-executable-p rel-name)
-                  (flycheck-rust-test-p rel-name)
-                  (flycheck-rust-bench-p rel-name)
-                  (flycheck-rust-example-p rel-name)
-                  (string= "src/lib.rs" rel-name))
-              (setq-local flycheck-rust-crate-root rel-name)
-            ;; For other files, the library is either the default library or the
-            ;; executable
-            (setq-local flycheck-rust-crate-root (flycheck-rust-find-crate-root)))
-          ;; Check tests in libraries and integration tests
-          (setq-local flycheck-rust-check-tests
-                      (not (flycheck-rust-executable-p rel-name)))
-          ;; Set the crate type
-          (setq-local flycheck-rust-crate-type
-                      (if (string= target-type "bin")
-                          (progn
-                            ;; If it's binary target, we need to pass the binary
-                            ;; name
-                            (setq-local flycheck-rust-binary-name target-name)
-                            "bin")
-                        "lib"))
-          ;; Find build libraries
-          (setq-local flycheck-rust-library-path
-                      (list (expand-file-name "target/debug" root)
-                            (expand-file-name "target/debug/deps" root))))))))
+        (let ((buf-file-name (buffer-file-name))
+              (lp load-path))
+          (async-start (lambda ()
+                         (setq load-path lp)
+                         (require 'flycheck-rust)
+                         (flycheck-rust-find-target buf-file-name))
+                       (lambda (result)
+                         (flycheck-rust-setup-callback buf-file-name root result))))))))
 
 (provide 'flycheck-rust)
 
